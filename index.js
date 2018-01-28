@@ -133,9 +133,9 @@
     statement in lib.readFrom */
     const VALID_EXTENSIONS = ["stl", "obj"];
     /* Amount of triangles parsed per batch */
-    const TRIANGLES_PER_BATCH = 50000;
+    const TRIANGLES_PER_BATCH = 500;
     /* Time between batches */
-    const TIMEOUT_CONSTANT = 500;
+    const TIMEOUT_CONSTANT = 10;
     /* Default camera distance from bounding sphere of object
     (1 would be on the bounding sphere)*/
     const CAMERA_DISTANCE_FACTOR = 1.5;
