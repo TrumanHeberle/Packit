@@ -2,6 +2,7 @@
     /////////////////////////////////////////////////////////////////////////////
     /**
      * @author Truman Heberle / trumanheberle.com
+     * Contact Via: https://twitter.com/truman_heberle
      * @requires Three.js / https://threejs.org/
      * @description Parses HTML DOM tree for properly formatted elements
      * (containing a source attribute and the appropriate class name,
