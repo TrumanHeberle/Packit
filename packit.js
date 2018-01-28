@@ -10,31 +10,31 @@
      * Ex: <div src="foo.stl" class="packit"></div>
      * @summary A simple way to add object files to a webpage
      **/
-    //lib.VERSION = '0.0.0';
+    //packit.VERSION = '0.0.0';
     /////////////////////////////////////////////////////////////////////////////
     /*** SETUP ***/
     // Establish the root object, `window` in the browser, or `exports` on the server.
     // Save the previous value of the `_` variable.
     let root = this;
-    let previousLib = root.lib;
+    let previousLib = root.packit;
 
-    // Create a safe reference to the lib object for use below.
-    let lib = function(obj) {
-        if (obj instanceof lib) return obj;
-        if (!(this instanceof lib)) return new lib(obj);
+    // Create a safe reference to the packit object for use below.
+    let packit = function(obj) {
+        if (obj instanceof packit) return obj;
+        if (!(this instanceof packit)) return new packit(obj);
         this.libwrapped = obj;
     };
 
-    // Export the lib object for **Node.js**, with
+    // Export the packit object for **Node.js**, with
     // backwards-compatibility for the old `require()` API. If we're in
-    // the browser, add `lib` as a global object.
+    // the browser, add `packit` as a global object.
     if (typeof exports !== 'undefined') {
         if (typeof module !== 'undefined' && module.exports) {
-            exports = module.exports = lib;
+            exports = module.exports = packit;
         }
-        exports.lib = lib;
+        exports.packit = packit;
     } else {
-        root.lib = lib;
+        root.packit = packit;
     }
 
     /*** CLASSES ***/
@@ -67,7 +67,7 @@
             this.rotation = new THREE.Vector3(parseFloat(defaultRotation[0]), parseFloat(defaultRotation[1]), parseFloat(defaultRotation[2]));
 
             this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
-            this.renderer.setClearColor(lib.sceneColor, lib.transparency);
+            this.renderer.setClearColor(packit.sceneColor, packit.transparency);
             this.light.position.set(0, -1, 0).normalize();
             this.scene.add(this.light);
             this.container.appendChild(this.renderer.domElement);
@@ -106,7 +106,7 @@
                 geometry.addAttribute("color", new THREE.BufferAttribute(colors, 3));
             } else {
                 material = new THREE.MeshPhongMaterial({
-                    color: lib.objectColor
+                    color: packit.objectColor
                 });
             }
 
@@ -122,7 +122,7 @@
             this.scene.add(this.object);
 
             this.camera.position.x = geometry.boundingSphere.center.x;
-            this.camera.position.y = geometry.boundingSphere.center.y - lib.cameraDistanceFactor * geometry.boundingSphere.radius / (Math.tan(Math.PI * this.camera.fov / 360));
+            this.camera.position.y = geometry.boundingSphere.center.y - packit.cameraDistanceFactor * geometry.boundingSphere.radius / (Math.tan(Math.PI * this.camera.fov / 360));
             this.camera.position.z = geometry.boundingSphere.center.z;
             this.camera.lookAt(geometry.boundingSphere.center);
         }
@@ -132,7 +132,7 @@
     /* The class name to add viewers to on document load */
     const CLASS_SPECIFIER = "packit";
     /* For each additional extension, a case must be added to the switch
-    statement in lib.readFrom */
+    statement in packit.readFrom */
     const VALID_EXTENSIONS = ["stl", "obj"];
     /* Amount of triangles parsed per batch */
     const TRIANGLES_PER_BATCH = 500;
@@ -145,15 +145,15 @@
     const DEFAULT_COLOR = "#27ae60";
     /* Default background color */
     const DEFAULT_CLEAR_COLOR = "#000000"
-    /**/
+    /* Default background transparency */
     const DEFAULT_TRANSPARENCY = 0;
 
     /*** LIBRARY VARIABLES ***/
-    lib.cameraDistanceFactor = CAMERA_DISTANCE_FACTOR;
-    lib.objectColor = DEFAULT_COLOR;
-    lib.sceneColor = DEFAULT_CLEAR_COLOR;
-    lib.transparency = 0;
-    lib.viewers = [];
+    packit.cameraDistanceFactor = CAMERA_DISTANCE_FACTOR;
+    packit.objectColor = DEFAULT_COLOR;
+    packit.sceneColor = DEFAULT_CLEAR_COLOR;
+    packit.transparency = DEFAULT_TRANSPARENCY;
+    packit.viewers = [];
 
     /*** CORE LIBRARY ***/
     /**
@@ -163,11 +163,11 @@
     document.addEventListener("DOMContentLoaded", function() {
         let objects = document.getElementsByClassName(CLASS_SPECIFIER);
         for (let i = 0; i < objects.length; i++) {
-            lib.readFrom(objects[i]);
+            packit.readFrom(objects[i]);
         }
         window.addEventListener("resize", function() {
-            for (let i = 0; i < lib.viewers.length; i++) {
-                lib.updateViewer(lib.viewers[i]);
+            for (let i = 0; i < packit.viewers.length; i++) {
+                packit.updateViewer(packit.viewers[i]);
             }
         });
     });
@@ -176,9 +176,9 @@
      * Create a new 3d object viewer
      * @param {object} container - DOM element to put the viewer in
      **/
-    lib.createViewer = function(container) {
+    packit.createViewer = function(container) {
         let viewer = new Viewer(container);
-        lib.viewers.push(viewer);
+        packit.viewers.push(viewer);
         return viewer;
     }
 
@@ -186,7 +186,7 @@
      * Updates the orientation of a viewer (not the scene)
      * @param {Viewer} viewer - the viewer to be updated
      **/
-    lib.updateViewer = function(viewer) {
+    packit.updateViewer = function(viewer) {
         viewer.resize();
     }
 
@@ -195,23 +195,23 @@
      * call to retrieve the object data as a string and properly parse the data
      * @param {object} container - DOM element to put the viewer in
      **/
-    lib.readFrom = function(container) {
+    packit.readFrom = function(container) {
         let path = container.getAttribute("src");
         let extension = path.split(".");
         extension = extension[extension.length - 1].toLowerCase();
         // Check if file is valid
         if (VALID_EXTENSIONS.includes(extension)) {
-            let viewer = lib.createViewer(container);
+            let viewer = packit.createViewer(container);
             // Request file
             let xhttp = new XMLHttpRequest();
             xhttp.onreadystatechange = function() {
                 if (this.readyState == 4 && this.status == 200) {
                     switch (extension) {
                         case "stl":
-                            lib.parseSTL(this.response, viewer);
+                            packit.parseSTL(this.response, viewer);
                             break;
                         case "obj":
-                            lib.parseOBJ(this.response, viewer);
+                            packit.parseOBJ(this.response, viewer);
                             break;
                         default:
                             console.log("Incorrect File Type");
@@ -230,7 +230,7 @@
      * @param {blob} data - object data
      * @param {Viewer} viewer - viewer to render the object
      **/
-    lib.parseSTL = function(data, viewer) {
+    packit.parseSTL = function(data, viewer) {
         let indicator = data.slice(0, 6);
         let reader = new FileReader();
 
@@ -404,7 +404,7 @@
      * @param {blob} data - object data
      * @param {Viewer} viewer - viewer to render the object
      **/
-    lib.parseOBJ = function(data, viewer) {
+    packit.parseOBJ = function(data, viewer) {
         // BEING IMPLEMENTED SOON
     }
 
@@ -412,14 +412,14 @@
 
     // AMD registration happens at the end for compatibility with AMD loaders
     // that may not enforce next-turn semantics on modules. Even though general
-    // practice for AMD registration is to be anonymous, lib registers
+    // practice for AMD registration is to be anonymous, packit registers
     // as a named module because, like jQuery, it is a base library that is
-    // popular enough to be bundled in a third party lib, but not be part of
+    // popular enough to be bundled in a third party library, but not be part of
     // an AMD load request. Those cases could generate an error when an
     // anonymous define() is called outside of a loader request.
     if (typeof define === 'function' && define.amd) {
-        define('lib', [], function() {
-            return lib;
+        define('packit', [], function() {
+            return packit;
         });
     }
 }.call(this));
