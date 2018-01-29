@@ -4,7 +4,7 @@ This library requires [Three.js](https://threejs.org/)
 
 ## Usage
 Load [Three.js](https://threejs.org/) and Packit scripts in document head
-```
+```html
 <script src="path/three.js"></script>
 <script src="path/packit.js"></script>
 ```
@@ -13,7 +13,7 @@ Format elements in document body to have:
 * class called "packit"
 * (optional) rotation tag containing the initial rotation of the object
 Example:
-```
+```html
 <!-- Replace path/foo.stl with your file path -->
 <div src="path/foo.stl" class="packit"></div>
 <!-- Element with style (below) -->
