@@ -12,6 +12,7 @@ Format elements in document body to have:
 * src tag containing the object file path
 * class called "packit"
 * (optional) rotation tag containing the initial rotation of the object
+
 Example:
 ```html
 <!-- Replace path/foo.stl with your file path -->
