@@ -33,7 +33,7 @@ Each HTML Packit element will automatically be formatted by the library and a Vi
 // log all viewers created automatically
 window.onload = function() {
   console.log(packit.viewers);
-  // work with 
+  // do work here
 }
 ````
 #### Methods
