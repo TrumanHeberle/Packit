@@ -27,3 +27,9 @@ Example:
 ```
 
 ## Javascript Functions
+Each HTML Packit element will automatically be formatted by the library and a Viewer object will be created for it. The Packit library stores an array of Viewer objects for every object created. Note that this process is **asynchronous** and you must use the window onload event to properly interact with the Viewers.
+```javascript
+window.onload = function() {
+  console.log(packit.viewers);
+}
+````
