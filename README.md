@@ -1,6 +1,7 @@
 # Packit
-Easily embed 3D objects to your website
-This library requires [Three.js](https://threejs.org/)
+Easily embed 3D objects to your website  
+This library requires [Three.js](https://threejs.org/)  
+Comments and suggestions welcomed!
 
 ## Usage
 Load [Three.js](https://threejs.org/) and Packit scripts in document head
