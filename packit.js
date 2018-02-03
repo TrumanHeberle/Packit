@@ -52,34 +52,36 @@
             this.renderer = new THREE.WebGLRenderer({alpha: true});
             this.scene = new THREE.Scene();
             this.camera = new THREE.PerspectiveCamera(75, this.container.clientWidth / this.container.clientHeight, 0.1, 1000);
-            this.light = new THREE.DirectionalLight(0xffffff);
-            this.object = null;
+            this.controller = new Controller(this.scene, this.camera);
 
             // For parsing purposes
             this.attemptedASCII_STL = false;
             this.attemptedBINARY_STL = false;
 
-            let defaultRotation = container.getAttribute("rotation")
-            if (defaultRotation) {
-                defaultRotation = defaultRotation.split(",");
-            } else {
-                defaultRotation = [0, 0, 0];
-            }
-            this.rotation = new THREE.Vector3(parseFloat(defaultRotation[0]), parseFloat(defaultRotation[1]), parseFloat(defaultRotation[2]));
-
+            // Initialize
             this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+            this.renderer.setViewport(0, 0, this.container.clientWidth, this.container.clientHeight);
+            this.camera.updateProjectionMatrix();
             this.renderer.setClearColor(packit.sceneColor, packit.transparency);
-            this.light.position.set(0, -1, 0).normalize();
-            this.scene.add(this.light);
             this.container.appendChild(this.renderer.domElement);
 
+            // Animate
             let animate = function() {
                 requestAnimationFrame(animate);
+                this.controller.update();
                 this.renderer.render(this.scene, this.camera);
             }.bind(this);
 
             animate();
         }
+
+        // Handled by Controller
+        rotate(speedX,speedY,speedZ) {this.controller.rotate(speedX,speedY,speedZ);}
+        stopRotation() {this.controller.stopRotation();}
+        setRotation(rotX,rotY,rotZ) {this.controller.transitionRotation(rotX,rotY,rotZ,1);}
+        transitionRotation(rotX,rotY,rotZ,transitionFrames) {this.controller.transitionRotation(rotX,rotY,rotZ,transitionFrames);}
+        setColor(color) {this.controller.transitionColor(color,1);}
+        transitionColor(color,transitionFrames) {this.controller.transitionColor(color,transitionFrames);}
 
         /**
          * Appropriately resizes the viewer to be the size of its container
@@ -89,43 +91,209 @@
             this.renderer.setViewport(0, 0, this.container.clientWidth, this.container.clientHeight);
             this.camera.aspect = this.container.clientWidth / this.container.clientHeight;
             this.camera.updateProjectionMatrix();
+            this.controller.repositionCamera();
         }
 
         /**
          * Renders the object from an array of triangleData
          * @param {Float32Array} vertices - object vertex data
-         * @param {Float32Array} colors - rgb face color data (ommitable)
+         * @param {Float32Array} colors - rgb face color data (optional)
          **/
         display(vertices, colors) {
-            let geometry = new THREE.BufferGeometry();
-            geometry.addAttribute("position", new THREE.BufferAttribute(vertices, 3));
-            geometry.computeVertexNormals();
-            geometry.computeBoundingSphere();
-
-            let material;
-            if (colors) { // Untested
-                geometry.addAttribute("color", new THREE.BufferAttribute(colors, 3));
+          // Create object geometry and bounds
+          let geometry = new THREE.BufferGeometry();
+          geometry.addAttribute("position", new THREE.BufferAttribute(vertices, 3));
+          geometry.center();
+          geometry.computeVertexNormals();
+          geometry.computeBoundingSphere();
+          // Create object material
+          let material;
+          if (colors) {
+            geometry.addAttribute("color", new THREE.BufferAttribute(colors, 3));
+          } else {
+            let defaultColor = new THREE.Color(this.container.getAttribute("color"));
+            if (defaultColor) {
+              material = new THREE.MeshPhongMaterial({
+                  color: defaultColor,
+                  side: THREE.DoubleSide
+              });
             } else {
-                material = new THREE.MeshPhongMaterial({
-                    color: packit.objectColor
-                });
+              material = new THREE.MeshPhongMaterial({
+                  color: packit.objectColor,
+                  side: THREE.DoubleSide
+              });
             }
+          }
+          // Create object
+          let object = new THREE.Mesh(geometry, material);
+          object.name = "object";
+          // Set default rotation
+          let defaultRotation = this.container.getAttribute("rotation");
+          if (defaultRotation) {
+            defaultRotation = defaultRotation.split(",");
+          } else {
+            defaultRotation = [0,0,0];
+          }
+          let rotation = new THREE.Vector3(parseFloat(defaultRotation[0])*Math.PI/180, parseFloat(defaultRotation[2])*Math.PI/180, parseFloat(defaultRotation[1])*Math.PI/180);
+          object.rotateOnWorldAxis(new THREE.Vector3(0,1,0), rotation.y);
+          object.rotateOnWorldAxis(new THREE.Vector3(0,0,1), rotation.z);
+          object.rotateOnWorldAxis(new THREE.Vector3(1,0,0), rotation.x);
+          // Add object to scene
+          this.controller.setObject(object);
+        }
+    }
 
-            this.object = new THREE.Mesh(geometry, material);
-            this.object.rotation.x = this.rotation.x;
-            this.object.rotation.y = this.rotation.y;
-            this.object.rotation.z = this.rotation.z;
-            this.object.name = "object";
-            let current = this.scene.getObjectByName("object");
-            if (current) {
-                this.scene.remove(current);
+
+
+
+    /**
+     * Contains the Object3D and basic control functions
+     **/
+    class Controller {
+      /**
+      * @param {THREE.Scene} scene - the scene which the controller resides
+      * @param {THREE.PerspectiveCamera} camera - the camera which the controller controls
+      **/
+        constructor(scene, camera) {
+          this.scene = scene;
+          this.camera = camera;
+          this.container = new THREE.Object3D();
+          this.light = new THREE.DirectionalLight(0xffffff, 1.25);
+          this.object = null;
+
+          // Initialize
+          this.light.position.set(0, -1, 0).normalize();
+          this.scene.add(this.light);
+          this.scene.add(this.container);
+
+          // For control purposes
+          this.rotationSpeed = {
+            x: 0,
+            y: 0,
+            z: 0
+          };
+          this.transitionFactors = {
+            color: 1,
+            rotation: 1
+          }
+          this.target = {
+            color: null,
+            rotation: {
+              x: null,
+              y: null,
+              z: null
             }
-            this.scene.add(this.object);
+          }
+        }
 
-            this.camera.position.x = geometry.boundingSphere.center.x;
-            this.camera.position.y = geometry.boundingSphere.center.y - packit.cameraDistanceFactor * geometry.boundingSphere.radius / (Math.tan(Math.PI * this.camera.fov / 360));
-            this.camera.position.z = geometry.boundingSphere.center.z;
-            this.camera.lookAt(geometry.boundingSphere.center);
+        /**
+        * Replaces any current object in the scene with the new object to display
+        * @param {THREE.Mesh} object - the object the controller controls
+        **/
+        setObject(object) {
+          this.object = object;
+          let current = this.container.getObjectByName("object");
+          if (current) {
+            this.container.remove(current);
+          }
+          this.container.add(this.object);
+          this.repositionCamera();
+        }
+
+        /**
+        * Repositions the camera to view the object
+        **/
+        repositionCamera() {
+          let y1 = -1.3 * packit.cameraDistanceFactor * this.object.geometry.boundingSphere.radius / (Math.tan(Math.PI * this.camera.fov / 360));
+          let y2 = -1.1 * packit.cameraDistanceFactor * this.object.geometry.boundingSphere.radius / (this.camera.aspect * Math.tan(Math.PI * this.camera.fov / 360));
+          this.camera.position.y = Math.min(y1,y2);
+          this.camera.lookAt(this.object.geometry.boundingSphere.center);
+        }
+
+        /**
+        * Updates properties of the scene, camera, and objects
+        **/
+        update() {
+          // Check object
+          if (this.object) {
+            // Update rotation
+            if (this.target.rotation.x != null || this.target.rotation.y != null || this.target.rotation.z != null) {
+              this.transitionFactors.rotation--;
+              let original = new THREE.Vector3(this.container.rotation.x, this.container.rotation.y, this.container.rotation.z);
+              original.lerp(new THREE.Vector3(this.target.rotation.x, this.target.rotation.y, this.target.rotation.z), 1/this.transitionFactors.rotation);
+              this.container.rotation.x = original.x;
+              this.container.rotation.y = original.y;
+              this.container.rotation.z = original.z;
+              if (this.container.rotation.x == this.target.rotation.x && this.container.rotation.y == this.target.rotation.y && this.container.rotation.z == this.target.rotation.z) {
+                this.target.rotation.x = null;
+                this.target.rotation.y = null;
+                this.target.rotation.z = null;
+              }
+            } else {
+              this.container.rotateX(this.rotationSpeed.x);
+              this.container.rotateY(this.rotationSpeed.y);
+              this.container.rotateZ(this.rotationSpeed.z);
+            }
+            // Update color
+            if (this.target.color) {
+              if (this.object.material.color.getHex() == this.target.color.getHex()) {
+                this.target.color = null;
+              } else {
+                this.transitionFactors.color--;
+                if (this.transitionFactors.color < 1) {
+                  this.transitionFactors.color = 1;
+                }
+                this.object.material.color.lerp(this.target.color, 1/this.transitionFactors.color);
+              }
+            }
+          }
+        }
+
+        /**
+        * Sets the angular velocity for the object to rotate
+        * @param {float} x - angular velocity around the x axis in degrees per frame update
+        * @param {float} y - angular velocity around the y axis in degrees per frame update
+        * @param {float} z - angular velocity around the z axis in degrees per frame update
+        **/
+        rotate(x, y, z) {
+          this.rotationSpeed.x = x * Math.PI / 180;
+          this.rotationSpeed.y = y * Math.PI / 180;
+          this.rotationSpeed.z = z * Math.PI / 180;
+        }
+
+        /**
+        * Stops any angular velocity on the object
+        **/
+        stopRotation() {
+          this.rotationSpeed.x = 0;
+          this.rotationSpeed.y = 0;
+          this.rotationSpeed.z = 0;
+        }
+
+        /**
+        * Rotates the object to rotation specified in a set number of frames
+        * @param {float} x - final angle around the x axis in degrees
+        * @param {float} x - final angle around the y axis in degrees
+        * @param {float} x - final angle around the z axis in degrees
+        * @param {int} transitionFrames - frames until rotation completes
+        **/
+        transitionRotation(x, y, z, transitionFrames) {
+          this.target.rotation.x = x * Math.PI / 180;
+          this.target.rotation.z = y * Math.PI / 180;
+          this.target.rotation.y = z * Math.PI / 180;
+          this.transitionFactors.rotation = Math.floor(transitionFrames) + 1;
+        }
+
+        /**
+        * Changes the color of the object to the color specified in a set number of frames
+        * @param {String} color - final color
+        * @param {int} transitionFrames - frames until color change completes
+        **/
+        transitionColor(color, transitionFrames) {
+          if (new THREE.Color(color) != this.object.material.color) {
+            this.target.color = new THREE.Color(color);
+            this.transitionFactors.color = Math.floor(transitionFrames) + 1;
+          }
         }
     }
 
@@ -141,9 +309,9 @@
     const TIMEOUT_CONSTANT = 10;
     /* Default camera distance from bounding sphere of object
     (1 would be on the bounding sphere)*/
-    const CAMERA_DISTANCE_FACTOR = 1.5;
+    const CAMERA_DISTANCE_FACTOR = 1;
     /* Default color if object color is unavailable */
-    const DEFAULT_COLOR = "#27ae60";
+    const DEFAULT_COLOR = "#ef5777";
     /* Default background color */
     const DEFAULT_CLEAR_COLOR = "#000000"
     /* Default background transparency */
