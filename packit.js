@@ -49,19 +49,17 @@
          **/
         constructor(container) {
             this.container = container;
+            this.name = container.getAttribute("src");
             this.renderer = new THREE.WebGLRenderer({alpha: true});
             this.scene = new THREE.Scene();
             this.camera = new THREE.PerspectiveCamera(75, this.container.clientWidth / this.container.clientHeight, 0.1, 1000);
             this.controller = new Controller(this.scene, this.camera);
 
-            // For parsing purposes
+            // For stl parsing purposes
             this.attemptedASCII_STL = false;
             this.attemptedBINARY_STL = false;
 
             // Initialize
-            this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
-            this.renderer.setViewport(0, 0, this.container.clientWidth, this.container.clientHeight);
-            this.camera.updateProjectionMatrix();
             this.renderer.setClearColor(packit.sceneColor, packit.transparency);
             this.container.appendChild(this.renderer.domElement);
 
@@ -97,15 +95,24 @@
         /**
          * Renders the object from an array of triangleData
          * @param {Float32Array} vertices - object vertex data
-         * @param {Float32Array} colors - rgb face color data (optional)
+         * @param {String} name - object's unique name (optional: pass null)
+         * @param {Uint32Array} faceIndices - face index data (optional: pass null)
+         * @param {Float32Array} colors - rgb face color data (optional: pass null)
+         * @param {Float32Array} uvs - uvw data (optional: pass null)
          **/
-        display(vertices, colors) {
+        display(vertices, name, faceIndices, colors, uvs) {
           // Create object geometry and bounds
           let geometry = new THREE.BufferGeometry();
           geometry.addAttribute("position", new THREE.BufferAttribute(vertices, 3));
-          geometry.center();
+          if (faceIndices) {
+            geometry.setIndex(new THREE.BufferAttribute(faceIndices, 1));
+          }
+          if (uvs) {
+            geometry.addAttribute("uv", new THREE.BufferAttribute(uvs, 3));
+          }
+
           geometry.computeVertexNormals();
-          geometry.computeBoundingSphere();
+
           // Create object material
           let material;
           if (colors) {
@@ -126,7 +133,11 @@
           }
           // Create object
           let object = new THREE.Mesh(geometry, material);
-          object.name = "object";
+          if (name) {
+            object.name = name;
+          } else {
+            object.name = this.container.getAttribute("src");
+          }
           // Set default rotation
           let defaultRotation = this.container.getAttribute("rotation");
           if (defaultRotation) {
@@ -140,6 +151,7 @@
           object.rotateOnWorldAxis(new THREE.Vector3(1,0,0), rotation.x);
           // Add object to scene
           this.controller.setObject(object);
+          this.resize();
         }
     }
 
@@ -159,7 +171,9 @@
           this.camera = camera;
           this.container = new THREE.Object3D();
           this.light = new THREE.DirectionalLight(0xffffff, 1.25);
-          this.object = null;
+          this.objects = [];
+          this.bounds = null;
+          this.translation = null;
 
           // Initialize
           this.light.position.set(0, -1, 0).normalize();
@@ -191,23 +205,28 @@
         * @param {THREE.Mesh} object - the object the controller controls
         **/
         setObject(object) {
-          this.object = object;
-          let current = this.container.getObjectByName("object");
-          if (current) {
-            this.container.remove(current);
+          if (this.objects.length == 0) { // First object
+            object.geometry.center();
+            object.geometry.computeBoundingSphere();
+            let scale = 1/object.geometry.boundingSphere.radius;
+            object.geometry.scale(scale,scale,scale);
+
+            this.bounds = object.geometry;
+          } else { // Subsequent objects
+            // Not implemented yet
           }
-          this.container.add(this.object);
-          this.repositionCamera();
+          this.objects.push(object);
+          this.container.add(object);
         }
 
         /**
         * Repositions the camera to view the object
         **/
         repositionCamera() {
-          let y1 = -1.3 * packit.cameraDistanceFactor * this.object.geometry.boundingSphere.radius / (Math.tan(Math.PI * this.camera.fov / 360));
-          let y2 = -1.1 * packit.cameraDistanceFactor * this.object.geometry.boundingSphere.radius / (this.camera.aspect * Math.tan(Math.PI * this.camera.fov / 360));
+          let y1 = -1.3 * packit.cameraDistanceFactor * this.bounds.boundingSphere.radius / (Math.tan(Math.PI * this.camera.fov / 360));
+          let y2 = -1.1 * packit.cameraDistanceFactor * this.bounds.boundingSphere.radius / (this.camera.aspect * Math.tan(Math.PI * this.camera.fov / 360));
           this.camera.position.y = Math.min(y1,y2);
-          this.camera.lookAt(this.object.geometry.boundingSphere.center);
+          this.camera.lookAt(new THREE.Vector3(0,0,0));
         }
 
         /**
@@ -215,7 +234,7 @@
         **/
         update() {
           // Check object
-          if (this.object) {
+          if (this.objects.length > 0) {
             // Update rotation
             if (this.target.rotation.x != null || this.target.rotation.y != null || this.target.rotation.z != null) {
               this.transitionFactors.rotation--;
@@ -235,15 +254,17 @@
               this.container.rotateZ(this.rotationSpeed.z);
             }
             // Update color
-            if (this.target.color) {
-              if (this.object.material.color.getHex() == this.target.color.getHex()) {
-                this.target.color = null;
-              } else {
-                this.transitionFactors.color--;
-                if (this.transitionFactors.color < 1) {
-                  this.transitionFactors.color = 1;
+            for (let i=0; i<this.objects.length; i++) {
+              if (this.target.color) {
+                if (this.objects[i].material.color.getHex() == this.target.color.getHex()) {
+                  this.target.color = null;
+                } else {
+                  this.transitionFactors.color--;
+                  if (this.transitionFactors.color < 1) {
+                    this.transitionFactors.color = 1;
+                  }
+                  this.objects[i].material.color.lerp(this.target.color, 1/this.transitionFactors.color);
                 }
-                this.object.material.color.lerp(this.target.color, 1/this.transitionFactors.color);
               }
             }
           }
@@ -290,10 +311,8 @@
         * @param {int} transitionFrames - frames until color change completes
         **/
         transitionColor(color, transitionFrames) {
-          if (new THREE.Color(color) != this.object.material.color) {
-            this.target.color = new THREE.Color(color);
-            this.transitionFactors.color = Math.floor(transitionFrames) + 1;
-          }
+          this.target.color = new THREE.Color(color);
+          this.transitionFactors.color = Math.floor(transitionFrames) + 1;
         }
     }
 
@@ -303,8 +322,8 @@
     /* For each additional extension, a case must be added to the switch
     statement in packit.readFrom */
     const VALID_EXTENSIONS = ["stl", "obj"];
-    /* Amount of triangles parsed per batch */
-    const TRIANGLES_PER_BATCH = 500;
+    /* Amount of lines parsed per batch */
+    const PER_BATCH = 500;
     /* Time between batches */
     const TIMEOUT_CONSTANT = 10;
     /* Default camera distance from bounding sphere of object
@@ -430,15 +449,15 @@
 
         reader.onload = function() {
             try {
-                let splice = reader.result.replace(/\n/g, "|").split("|");
+                let splice = reader.result.split(/\n/g);
                 let triCount = (splice.length - 3) / 7;
                 if (triCount !== parseInt(triCount, 10)) {
                     throw "Illegal Parse";
                 }
 
                 let batchCount = 0;
-                let batchLimit = Math.floor(triCount / TRIANGLES_PER_BATCH);
-                let remainder = triCount - batchLimit * TRIANGLES_PER_BATCH;
+                let batchLimit = Math.floor(triCount / PER_BATCH);
+                let remainder = triCount - batchLimit * PER_BATCH;
                 let triangleData = new Float32Array(triCount * 9);
                 runBatch();
 
@@ -446,15 +465,15 @@
                  * Parses one batch of triangles from data
                  **/
                 function runBatch() {
-                    for (let i = 0; i < TRIANGLES_PER_BATCH; i++) {
-                        getTriangle(TRIANGLES_PER_BATCH * batchCount + i);
+                    for (let i = 0; i < PER_BATCH; i++) {
+                        getTriangle(PER_BATCH * batchCount + i);
                     }
                     batchCount++;
                     if (batchCount < batchLimit) {
                         setTimeout(runBatch(), TIMEOUT_CONSTANT);
                     } else {
                         for (let i = 0; i < remainder; i++) {
-                            getTriangle(TRIANGLES_PER_BATCH * batchCount + i);
+                            getTriangle(PER_BATCH * batchCount + i);
                         }
                         viewer.display(triangleData);
                     }
@@ -518,8 +537,8 @@
                 }
 
                 let batchCount = 0;
-                let batchLimit = Math.floor(triCount / TRIANGLES_PER_BATCH);
-                let remainder = triCount - batchLimit * TRIANGLES_PER_BATCH;
+                let batchLimit = Math.floor(triCount / PER_BATCH);
+                let remainder = triCount - batchLimit * PER_BATCH;
                 let triangleData = new Float32Array(triCount * 9);
                 runBatch();
 
@@ -527,15 +546,15 @@
                  * Parses one batch of triangles from data
                  **/
                 function runBatch() {
-                    for (let i = 0; i < TRIANGLES_PER_BATCH; i++) {
-                        getTriangle(TRIANGLES_PER_BATCH * batchCount + i);
+                    for (let i = 0; i < PER_BATCH; i++) {
+                        getTriangle(PER_BATCH * batchCount + i);
                     }
                     batchCount++;
                     if (batchCount < batchLimit) {
                         setTimeout(runBatch(), TIMEOUT_CONSTANT);
                     } else {
                         for (let i = 0; i < remainder; i++) {
-                            getTriangle(TRIANGLES_PER_BATCH * batchCount + i);
+                            getTriangle(PER_BATCH * batchCount + i);
                         }
                         viewer.display(triangleData);
                     }
@@ -574,7 +593,110 @@
      * @param {Viewer} viewer - viewer to render the object
      **/
     packit.parseOBJ = function(data, viewer) {
-        // BEING IMPLEMENTED SOON
+      let reader = new FileReader();
+
+      reader.onload = function() {
+        let str = reader.result;
+        let splice = reader.result.split(/\n/g);
+        let identifier = "";
+
+        let materials = [];
+        let vertices = [];
+        let faces = [];
+        let uvs = [];
+        let uvfaces = [];
+
+        for (let i=0; i<splice.length; i++) {
+          identifier = splice[i].substring(0,2);
+
+          if (identifier === "v ") {
+            parseVertex(splice[i]);
+          }
+          else if (identifier === "vt") {
+            parseUV(splice[i]);
+          }
+          else if (identifier === "f ") {
+            parseFace(splice[i]);
+          }
+          /*else if (identifier === "# ") {
+            console.log(splice[i]); // display obj file comments
+          }*/
+        }
+
+        /****/
+        function runBatch() {
+
+        }
+
+        viewer.display(new Float32Array(vertices), null, new Uint32Array(faces), null, new Float32Array(uvfaces));
+
+        /**
+        * parses a raw text line containing a vertex
+        * @param {String} line - text line containing vertex data
+        **/
+        function parseVertex(line) {
+          let arr = line.split(" ");
+          let el;
+          for (let i=0; i<arr.length; i++) {
+            el = parseFloat(arr[i]);
+            if (!isNaN(el)) {
+              vertices.push(el);
+            }
+          }
+        }
+
+        /**
+        * parses a raw text line containing a uv texture coordinate
+        * @param {String} line - text line containing uv data
+        **/
+        function parseUV(line) {
+          let arr = line.split(" ");
+          let el;
+          for (let i=0; i<arr.length; i++) {
+            el = parseFloat(arr[i]);
+            if (!isNaN(el)) {
+              uvs.push(el);
+            }
+          }
+        }
+
+        /**
+        * {may need fixing}
+        * parses a raw text line containing a face
+        * @param {String} line - text line containing polygon data
+        **/
+        function parseFace(line) {
+          let arr = line.split(" ");
+          let spl;
+          let face;
+          let texture
+          for (let i=1; i<arr.length-1; i++) {
+            spl = arr[i].split("/");
+            face = parseInt(spl[0]);
+            if (!isNaN(face)) {
+              texture = parseInt(spl[1]);
+              if (face < 0) {
+                face += vertices.length/3 + 1;
+              }
+              faces.push(face - 1);
+              if (i > 3) {
+                faces.push(faces[faces.length-4]);
+                faces.push(faces[faces.length-3]);
+              }
+              if (texture < 0) {
+                texture += uvs.length/3 + 1;
+              }
+              uvfaces.push(texture - 1);
+              if (i > 3) {
+                uvfaces.push(uvfaces[uvfaces.length-4]);
+                uvfaces.push(uvfaces[uvfaces.length-3]);
+              }
+            }
+          }
+        }
+      }
+
+      reader.readAsText(data);
     }
 
     /////////////////////////////////////////////////////////////////////////////
